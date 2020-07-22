@@ -200,13 +200,27 @@ static void char_pty_open(Chardev *chr,
                           Error **errp)
 {
     PtyChardev *s;
-    int master_fd, slave_fd;
-    char pty_name[PATH_MAX];
+    int master_fd, slave_fd, ret;
+    char pty_name[PATH_MAX], screen_cmd[PATH_MAX], logfile_cmd[PATH_MAX];
     char *name;
 
     master_fd = qemu_openpty_raw(&slave_fd, pty_name);
     if (master_fd < 0) {
         error_setg_errno(errp, errno, "Failed to create PTY");
+        return;
+    }
+
+    // Start as daemon: Screen session in detached mode.
+    sprintf(screen_cmd, "screen -L -d -m %s", pty_name);
+    // sprintf(screen_cmd, "screen -S %s -L -d -m %s", chr->label, pty_name);
+    ret = system(screen_cmd);
+    // sends a command to an already existing session
+    sprintf(logfile_cmd, "screen -X colon \"logfile flush 0^M\"");
+    // sprintf(logfile_cmd, "screen -S %s -X colon \"logfile flush 0^M\"", chr->label);
+    ret = system(logfile_cmd);
+
+    if (WIFSIGNALED(ret) && (WTERMSIG(ret) == SIGINT || WTERMSIG(ret) == SIGQUIT)) {
+        error_setg_errno(errp, errno, "Failed to issuing screen command: %s", screen_cmd);
         return;
     }
 
